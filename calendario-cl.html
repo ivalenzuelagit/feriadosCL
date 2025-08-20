@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini Calendario de Chile con Feriados</title>
+  <style>
+    :root{
+      --bg: #ffffff;
+      --fg: #1f2937;          /* gray-800 */
+      --muted:#6b7280;        /* gray-500 */
+      --accent:#2563eb;       /* blue-600 */
+      --holiday:#ef4444;      /* red-500 */
+      --ring:#e5e7eb;         /* gray-200 */
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0b1020;
+        --fg:#e5e7eb;
+        --muted:#94a3b8;
+        --accent:#60a5fa;
+        --holiday:#f87171;
+        --ring:#1f2937;
+      }
+    }
+    *{box-sizing:border-box}
+    body{margin:0;display:grid;place-items:center;min-height:100vh;background:var(--bg);font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"}
+
+    /* —— tarjeta compacta —— */
+    .mini-cal{width: 300px; /* <= tamaño pequeño */
+      background:var(--bg); color:var(--fg); border:1px solid var(--ring); border-radius:16px; box-shadow:0 6px 18px rgba(0,0,0,.08); overflow:hidden}
+
+    .cal-header{display:flex; align-items:center; justify-content:space-between; padding:10px 10px; border-bottom:1px solid var(--ring)}
+    .cal-header .title{font-weight:600; font-size:14px; letter-spacing:.2px}
+    .nav-btn{appearance:none; border:1px solid var(--ring); background:transparent; color:var(--fg); width:26px; height:26px; border-radius:8px; display:grid; place-items:center; cursor:pointer}
+    .nav-btn:active{transform:translateY(1px)}
+
+    .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; padding:10px}
+    .dow{font-size:10px; text-align:center; color:var(--muted)}
+    .cell{height:32px; display:grid; place-items:center; border-radius:10px; font-size:12px; position:relative}
+    .cell.other{color:var(--muted)}
+    .cell.today{outline:2px solid var(--accent)}
+    .cell.holiday{background: color-mix(in lch, var(--holiday), transparent 80%); color:var(--fg)}
+    .cell.holiday::after{content:"•"; position:absolute; bottom:4px; right:6px; font-size:12px; color:var(--holiday)}
+    .legend{display:flex; gap:8px; align-items:center; padding:0 10px 10px; color:var(--muted); font-size:11px}
+    .dot{width:8px; height:8px; border-radius:999px; background:var(--holiday); display:inline-block}
+
+    .list{border-top:1px dashed var(--ring); padding:8px 10px; max-height:110px; overflow:auto}
+    .list h4{margin:0 0 6px 0; font-size:11px; color:var(--muted); font-weight:600}
+    .list ul{margin:0; padding:0; list-style:none}
+    .list li{padding:4px 0; font-size:12px}
+    .list .date{font-variant-numeric:tabular-nums; color:var(--muted)}
+
+    .source{padding:8px 10px; border-top:1px solid var(--ring); color:var(--muted); font-size:10px}
+    a{color:inherit}
+  </style>
+</head>
+<body>
+  <div class="mini-cal" aria-label="Calendario de feriados en Chile">
+    <div class="cal-header">
+      <button class="nav-btn" id="prev" aria-label="Mes anterior">‹</button>
+      <div class="title" id="title">—</div>
+      <button class="nav-btn" id="next" aria-label="Mes siguiente">›</button>
+    </div>
+
+    <div class="cal-grid" role="grid" aria-readonly="true">
+      <div class="dow" aria-hidden="true">Lu</div>
+      <div class="dow" aria-hidden="true">Ma</div>
+      <div class="dow" aria-hidden="true">Mi</div>
+      <div class="dow" aria-hidden="true">Ju</div>
+      <div class="dow" aria-hidden="true">Vi</div>
+      <div class="dow" aria-hidden="true">Sá</div>
+      <div class="dow" aria-hidden="true">Do</div>
+      <!-- Las celdas del mes se inyectan aquí -->
+    </div>
+
+    <div class="legend"><span class="dot"></span> Feriados del mes</div>
+
+    <div class="list" id="list">
+      <h4>Feriados del mes</h4>
+      <ul id="holidayList"></ul>
+    </div>
+
+    <div class="source">Fuente: API pública Nager.Date • País: CL</div>
+  </div>
+
+<script>
+(() => {
+  const titleEl = document.getElementById('title');
+  const gridEl = document.querySelector('.cal-grid');
+  const listEl = document.getElementById('holidayList');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+
+  // Estado
+  const today = new Date();
+  let view = new Date(today.getFullYear(), today.getMonth(), 1); // primer día del mes
+  const cache = new Map(); // year -> Map('YYYY-MM-DD' -> {name, types})
+
+  // Utilidades
+  const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const pad = n => String(n).padStart(2,'0');
+  const iso = (y,m,d) => `${y}-${pad(m+1)}-${pad(d)}`; // m = 0..11
+  const mondayIndex = jsDay => (jsDay + 6) % 7; // convierte 0(dom)..6(sab) -> 0(lun)..6(dom)
+
+  async function getHolidays(year){
+    if(cache.has(year)) return cache.get(year);
+    const url = `https://date.nager.at/api/v3/PublicHolidays/${year}/CL`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('No se pudo obtener feriados');
+    const data = await res.json();
+    const map = new Map();
+    for(const h of data){
+      // Tipos posibles: Public, Bank, School, Authorities, Optional, Observance
+      map.set(h.date, { name: h.localName || h.name, types: h.types || ['Public'] });
+    }
+    cache.set(year, map);
+    return map;
+  }
+
+  function buildCells(year, month, holidays){
+    // Limpiar celdas previas
+    gridEl.querySelectorAll('.cell').forEach(n => n.remove());
+
+    const first = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0).getDate();
+
+    const offset = mondayIndex(first.getDay()); // cuántos blancos antes del 1
+
+    // Relleno con días del mes anterior (solo apariencia)
+    for(let i=0;i<offset;i++){
+      const div = document.createElement('div');
+      div.className = 'cell other';
+      div.setAttribute('aria-disabled','true');
+      gridEl.appendChild(div);
+    }
+
+    // Días del mes actual
+    const monthHolidays = [];
+    for(let d=1; d<=lastDay; d++){
+      const dateStr = iso(year, month, d);
+      const isToday = (year===today.getFullYear() && month===today.getMonth() && d===today.getDate());
+      const cell = document.createElement('div');
+      const isHoliday = holidays.has(dateStr);
+      cell.className = 'cell' + (isToday ? ' today' : '') + (isHoliday ? ' holiday' : '');
+      cell.textContent = d;
+      cell.role = 'gridcell';
+      cell.ariaLabel = dateStr;
+      if(isHoliday){
+        const h = holidays.get(dateStr);
+        cell.title = h.name; // tooltip nativo
+        monthHolidays.push({date: dateStr, name: h.name});
+      }
+      gridEl.appendChild(cell);
+    }
+
+    // Actualiza la lista del mes
+    listEl.innerHTML = '';
+    if(monthHolidays.length === 0){
+      const li = document.createElement('li');
+      li.textContent = 'No hay feriados en este mes.';
+      listEl.appendChild(li);
+    }else{
+      // ordenar por día
+      monthHolidays.sort((a,b) => a.date.localeCompare(b.date));
+      for(const h of monthHolidays){
+        const li = document.createElement('li');
+        const [y, m, d] = h.date.split('-');
+        li.innerHTML = `<span class="date">${d}/${m}</span> — ${h.name}`;
+        listEl.appendChild(li);
+      }
+    }
+  }
+
+  async function render(){
+    const y = view.getFullYear();
+    const m = view.getMonth();
+    titleEl.textContent = `${MONTHS[m]} ${y}`;
+    try{
+      const holidays = await getHolidays(y);
+      buildCells(y, m, holidays);
+    }catch(err){
+      console.error(err);
+      // fallback: mostrar calendario sin feriados
+      buildCells(y, m, new Map());
+    }
+  }
+
+  // Navegación
+  prevBtn.addEventListener('click', () => { view.setMonth(view.getMonth()-1); render(); });
+  nextBtn.addEventListener('click', () => { view.setMonth(view.getMonth()+1); render(); });
+
+  // Arranque
+  render();
+})();
+</script>
+</body>
+</html>
