@@ -6,52 +6,44 @@
   <title>Mini Calendario de Chile con Feriados</title>
   <style>
     :root{
-      --bg: #ffffff;
-      --fg: #1f2937;          /* gray-800 */
-      --muted:#6b7280;        /* gray-500 */
-      --accent:#2563eb;       /* blue-600 */
+      --bg: #fdfdfd;
+      --fg: #374151;          /* gray-700 */
+      --muted:#9ca3af;        /* gray-400 */
+      --accent:#3b82f6;       /* blue-500 */
       --holiday:#ef4444;      /* red-500 */
-      --ring:#e5e7eb;         /* gray-200 */
-    }
-    @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#0b1020;
-        --fg:#e5e7eb;
-        --muted:#94a3b8;
-        --accent:#60a5fa;
-        --holiday:#f87171;
-        --ring:#1f2937;
-      }
+      --ring:#d1d5db;         /* gray-300 */
     }
     *{box-sizing:border-box}
     body{margin:0;display:grid;place-items:center;min-height:100vh;background:var(--bg);font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"}
 
     /* —— tarjeta compacta —— */
     .mini-cal{width: 300px; /* <= tamaño pequeño */
-      background:var(--bg); color:var(--fg); border:1px solid var(--ring); border-radius:16px; box-shadow:0 6px 18px rgba(0,0,0,.08); overflow:hidden}
+      background:var(--bg); color:var(--fg); border:1px solid var(--ring); border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,.05); overflow:hidden}
 
-    .cal-header{display:flex; align-items:center; justify-content:space-between; padding:10px 10px; border-bottom:1px solid var(--ring)}
+    .cal-header{display:flex; align-items:center; justify-content:space-between; padding:10px 10px; border-bottom:1px solid var(--ring); background:#f9fafb}
     .cal-header .title{font-weight:600; font-size:14px; letter-spacing:.2px}
-    .nav-btn{appearance:none; border:1px solid var(--ring); background:transparent; color:var(--fg); width:26px; height:26px; border-radius:8px; display:grid; place-items:center; cursor:pointer}
+    .nav-btn{appearance:none; border:1px solid var(--ring); background:#ffffff; color:var(--fg); width:26px; height:26px; border-radius:6px; display:grid; place-items:center; cursor:pointer; transition:background .2s}
+    .nav-btn:hover{background:#f3f4f6}
     .nav-btn:active{transform:translateY(1px)}
 
-    .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; padding:10px}
+    .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; padding:10px; background:#fff}
     .dow{font-size:10px; text-align:center; color:var(--muted)}
-    .cell{height:32px; display:grid; place-items:center; border-radius:10px; font-size:12px; position:relative}
-    .cell.other{color:var(--muted)}
-    .cell.today{outline:2px solid var(--accent)}
-    .cell.holiday{background: color-mix(in lch, var(--holiday), transparent 80%); color:var(--fg)}
+    .cell{height:32px; display:grid; place-items:center; border-radius:6px; font-size:12px; position:relative; background:#f9fafb}
+    .cell.other{color:var(--muted); background:#f3f4f6}
+    .cell.today{outline:2px solid var(--accent); background:#e0f2fe}
+    .cell.holiday{background:#fee2e2; color:#b91c1c; font-weight:600}
     .cell.holiday::after{content:"•"; position:absolute; bottom:4px; right:6px; font-size:12px; color:var(--holiday)}
-    .legend{display:flex; gap:8px; align-items:center; padding:0 10px 10px; color:var(--muted); font-size:11px}
+
+    .legend{display:flex; gap:8px; align-items:center; padding:0 10px 10px; color:var(--muted); font-size:11px; background:#fff}
     .dot{width:8px; height:8px; border-radius:999px; background:var(--holiday); display:inline-block}
 
-    .list{border-top:1px dashed var(--ring); padding:8px 10px; max-height:110px; overflow:auto}
+    .list{border-top:1px dashed var(--ring); padding:8px 10px; max-height:110px; overflow:auto; background:#fff}
     .list h4{margin:0 0 6px 0; font-size:11px; color:var(--muted); font-weight:600}
     .list ul{margin:0; padding:0; list-style:none}
     .list li{padding:4px 0; font-size:12px}
     .list .date{font-variant-numeric:tabular-nums; color:var(--muted)}
 
-    .source{padding:8px 10px; border-top:1px solid var(--ring); color:var(--muted); font-size:10px}
+    .source{padding:8px 10px; border-top:1px solid var(--ring); color:var(--muted); font-size:10px; background:#f9fafb}
     a{color:inherit}
   </style>
 </head>
@@ -111,7 +103,6 @@
     const data = await res.json();
     const map = new Map();
     for(const h of data){
-      // Tipos posibles: Public, Bank, School, Authorities, Optional, Observance
       map.set(h.date, { name: h.localName || h.name, types: h.types || ['Public'] });
     }
     cache.set(year, map);
@@ -119,15 +110,13 @@
   }
 
   function buildCells(year, month, holidays){
-    // Limpiar celdas previas
     gridEl.querySelectorAll('.cell').forEach(n => n.remove());
 
     const first = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0).getDate();
 
-    const offset = mondayIndex(first.getDay()); // cuántos blancos antes del 1
+    const offset = mondayIndex(first.getDay());
 
-    // Relleno con días del mes anterior (solo apariencia)
     for(let i=0;i<offset;i++){
       const div = document.createElement('div');
       div.className = 'cell other';
@@ -135,7 +124,6 @@
       gridEl.appendChild(div);
     }
 
-    // Días del mes actual
     const monthHolidays = [];
     for(let d=1; d<=lastDay; d++){
       const dateStr = iso(year, month, d);
@@ -148,20 +136,18 @@
       cell.ariaLabel = dateStr;
       if(isHoliday){
         const h = holidays.get(dateStr);
-        cell.title = h.name; // tooltip nativo
+        cell.title = h.name;
         monthHolidays.push({date: dateStr, name: h.name});
       }
       gridEl.appendChild(cell);
     }
 
-    // Actualiza la lista del mes
     listEl.innerHTML = '';
     if(monthHolidays.length === 0){
       const li = document.createElement('li');
       li.textContent = 'No hay feriados en este mes.';
       listEl.appendChild(li);
     }else{
-      // ordenar por día
       monthHolidays.sort((a,b) => a.date.localeCompare(b.date));
       for(const h of monthHolidays){
         const li = document.createElement('li');
@@ -181,16 +167,13 @@
       buildCells(y, m, holidays);
     }catch(err){
       console.error(err);
-      // fallback: mostrar calendario sin feriados
       buildCells(y, m, new Map());
     }
   }
 
-  // Navegación
   prevBtn.addEventListener('click', () => { view.setMonth(view.getMonth()-1); render(); });
   nextBtn.addEventListener('click', () => { view.setMonth(view.getMonth()+1); render(); });
 
-  // Arranque
   render();
 })();
 </script>
